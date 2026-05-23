@@ -197,45 +197,47 @@ fun PrintPreviewBox(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.surface)
             .border(2.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             val previewWidth = if (paperSize == "80mm") 240.dp else 180.dp
-            Box(
-                modifier = Modifier
-                    .background(Color(0xFFF5F5F5))
-                    .border(1.dp, Color.LightGray)
-                    .padding(16.dp)
-                    .width(previewWidth)
-                    .animateContentSize()
-            ) {
-                Column {
-                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        if(headerTitle.isNotBlank()) Text(headerTitle, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp))
-                        if(headerWebsite.isNotBlank()) Text(headerWebsite, style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
-                        if(headerPhone.isNotBlank()) Text(headerPhone, style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
-                        if(headerEmail.isNotBlank()) Text(headerEmail, style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
+            CompositionLocalProvider(LocalContentColor provides Color(0xFF1D1B20)) {
+                Box(
+                    modifier = Modifier
+                        .background(Color.White)
+                        .border(1.dp, Color.LightGray)
+                        .padding(16.dp)
+                        .width(previewWidth)
+                        .animateContentSize()
+                ) {
+                    Column {
+                        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            if(headerTitle.isNotBlank()) Text(headerTitle, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp))
+                            if(headerWebsite.isNotBlank()) Text(headerWebsite, style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
+                            if(headerPhone.isNotBlank()) Text(headerPhone, style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
+                            if(headerEmail.isNotBlank()) Text(headerEmail, style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.Gray)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Service:", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+                            Text(if (serviceDetails.isBlank()) "Doc Fee" else serviceDetails, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("TOTAL:", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold))
+                            Text("Rs. " + (if (amount.isBlank()) "125.00" else amount), style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold))
+                        }
+                        if (customText.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("Notes:", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold))
+                            Text(customText, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        if(footerText.isNotBlank()) Text(footerText, style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                     }
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.Gray)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Service:", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
-                        Text(if (serviceDetails.isBlank()) "Doc Fee" else serviceDetails, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("TOTAL:", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold))
-                        Text("Rs. " + (if (amount.isBlank()) "125.00" else amount), style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold))
-                    }
-                    if (customText.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text("Notes:", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold))
-                        Text(customText, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    if(footerText.isNotBlank()) Text(footerText, style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                 }
             }
             Spacer(Modifier.height(16.dp))
