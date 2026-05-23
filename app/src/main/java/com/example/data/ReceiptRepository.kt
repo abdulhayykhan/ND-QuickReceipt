@@ -1,10 +1,19 @@
 package com.example.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 
 class ReceiptRepository(private val receiptDao: ReceiptDao, private val templateDao: TemplateDao) {
     val allReceipts: Flow<List<ReceiptEntity>> = receiptDao.getAllReceipts()
+        .catch { e -> 
+            e.printStackTrace()
+            emit(emptyList()) 
+        }
     val allTemplates: Flow<List<TemplateEntity>> = templateDao.getAllTemplates()
+        .catch { e -> 
+            e.printStackTrace()
+            emit(emptyList()) 
+        }
 
     suspend fun insert(receipt: ReceiptEntity) = receiptDao.insertReceipt(receipt)
 

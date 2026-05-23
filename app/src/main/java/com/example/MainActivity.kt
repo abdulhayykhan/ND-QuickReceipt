@@ -251,7 +251,7 @@ fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, is
     val coroutineScope = rememberCoroutineScope()
     
     val checkBluetoothPermission = {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && context.applicationInfo.targetSdkVersion >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.BLUETOOTH_CONNECT
