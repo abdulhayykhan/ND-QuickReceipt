@@ -8,12 +8,12 @@ plugins {
 
 android {
   namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  compileSdk = 35
 
   defaultConfig {
     applicationId = "com.aistudio.naeemreceipt.zxcvbn"
     minSdk = 24
-    targetSdk = 34
+    targetSdk = 33
     versionCode = 1
     versionName = "1.0"
 
@@ -47,6 +47,13 @@ android {
       signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
+
+  @Suppress("DEPRECATION")
+  adbOptions {
+    installOptions.clear()
+    installOptions.addAll(listOf("-r", "-t"))
+  }
+
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11

@@ -40,7 +40,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.theme.MyApplicationTheme
-import com.google.accompanist.permissions.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,8 +77,9 @@ import com.example.data.AppDatabase
 import com.example.data.ReceiptRepository
 
 class MainActivity : ComponentActivity() {
-    private lateinit var db: AppDatabase
-    private lateinit var repository: ReceiptRepository
+    private var db: AppDatabase? = null
+    private var repository: ReceiptRepository? = null
+    private var databaseInitError: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -91,7 +95,7 @@ class MainActivity : ComponentActivity() {
                     }
                     file.writeText(sw.toString())
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
             }
             if (oldHandler != null) {
@@ -101,10 +105,29 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "receipt_db")
-            .fallbackToDestructiveMigration()
-            .build()
-        repository = ReceiptRepository(db.receiptDao(), db.templateDao())
+        var dbTemp: AppDatabase? = null
+        var repoTemp: ReceiptRepository? = null
+        try {
+            dbTemp = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "receipt_db")
+                .fallbackToDestructiveMigration()
+                .build()
+            repoTemp = ReceiptRepository(dbTemp.receiptDao(), dbTemp.templateDao())
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            databaseInitError = "First attempt error:\n" + e.stackTraceToString()
+            try {
+                applicationContext.deleteDatabase("receipt_db")
+                dbTemp = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "receipt_db")
+                    .fallbackToDestructiveMigration()
+                    .build()
+                repoTemp = ReceiptRepository(dbTemp.receiptDao(), dbTemp.templateDao())
+            } catch (e2: Throwable) {
+                e2.printStackTrace()
+                databaseInitError += "\nSecond attempt error:\n" + e2.stackTraceToString()
+            }
+        }
+        db = dbTemp
+        repository = repoTemp
         
         enableEdgeToEdge()
         val printerService = PrinterService(this)
@@ -113,17 +136,52 @@ class MainActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(systemTheme) }
 
             MyApplicationTheme(darkTheme = isDarkMode) {
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    containerColor = MaterialTheme.colorScheme.background
-                ) { innerPadding ->
-                    ReceiptApp(
-                        printerService = printerService,
-                        repository = repository,
-                        isDarkMode = isDarkMode,
-                        onThemeToggle = { isDarkMode = !isDarkMode },
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                val currentRepo = repository
+                if (currentRepo == null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                            Text("Database Initialization Error", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.height(8.dp))
+                            Text("We suffered a critical failure starting the local receipt database. Please try restarting the application.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                            
+                            databaseInitError?.let { errTrace ->
+                                Spacer(Modifier.height(16.dp))
+                                Text("Diagnostic Details:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Start))
+                                Spacer(Modifier.height(4.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(8.dp)
+                                ) {
+                                    Text(
+                                        text = errTrace,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Scaffold(
+                        modifier = Modifier.fillMaxSize(),
+                        containerColor = MaterialTheme.colorScheme.background
+                    ) { innerPadding ->
+                        ReceiptApp(
+                            printerService = printerService,
+                            repository = currentRepo,
+                            isDarkMode = isDarkMode,
+                            onThemeToggle = { isDarkMode = !isDarkMode },
+                            modifier = Modifier.padding(innerPadding)
+                        )
+                    }
                 }
             }
         }
@@ -186,24 +244,43 @@ fun PrintPreviewBox(
     }
 }
 
-@OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, isDarkMode: Boolean, onThemeToggle: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
-    val bluetoothPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        listOf(
-            Manifest.permission.BLUETOOTH_CONNECT
-        )
-    } else {
-        emptyList()
+    val checkBluetoothPermission = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
     }
     
-    val permissionsState = if (bluetoothPermissions.isNotEmpty()) {
-        rememberMultiplePermissionsState(permissions = bluetoothPermissions)
-    } else {
-        null
+    var bluetoothPermissionGranted by remember {
+        mutableStateOf(checkBluetoothPermission())
+    }
+    
+    var showDeviceDialog by remember { mutableStateOf(false) }
+    var pairedDevicesList by remember { mutableStateOf<List<PrinterDevice>>(emptyList()) }
+    
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissionsMap ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val granted = permissionsMap[Manifest.permission.BLUETOOTH_CONNECT] ?: false
+            bluetoothPermissionGranted = granted
+            if (granted) {
+                pairedDevicesList = printerService.getPairedDevices()
+                showDeviceDialog = true
+            } else {
+                Toast.makeText(context, "Bluetooth permission is required to search and connect to printers", Toast.LENGTH_LONG).show()
+            }
+        }
     }
     
     var customerName by remember { mutableStateOf("") }
@@ -223,20 +300,36 @@ fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, is
                         crashLog = log
                     }
                 }
-            } catch (e: Exception) {
+                
+                if (repository.getTemplateCount() == 0) {
+                    repository.insertTemplate(com.example.data.TemplateEntity(
+                        name = "Naeem Documentation",
+                        headerTitle = "NAEEM DOCUMENTATION",
+                        headerWebsite = "naeemdocumentation.com",
+                        headerPhone = "Phone: 0315 8157721",
+                        headerEmail = "Email: naeemdocumentation@gmail.com",
+                        footerText = "THANK YOU FOR YOUR BUSINESS",
+                        paperSize = "58mm",
+                        isSelected = true
+                    ))
+                }
+            } catch (e: Throwable) {
                 e.printStackTrace()
-            }
-            if (repository.getTemplateCount() == 0) {
-                repository.insertTemplate(com.example.data.TemplateEntity(
-                    name = "Naeem Documentation",
-                    headerTitle = "NAEEM DOCUMENTATION",
-                    headerWebsite = "naeemdocumentation.com",
-                    headerPhone = "Phone: 0315 8157721",
-                    headerEmail = "Email: naeemdocumentation@gmail.com",
-                    footerText = "THANK YOU FOR YOUR BUSINESS",
-                    paperSize = "58mm",
-                    isSelected = true
-                ))
+                try {
+                    val file = java.io.File(context.cacheDir, "crash_log.txt")
+                    java.io.StringWriter().use { sw ->
+                        java.io.PrintWriter(sw).use { pw ->
+                            e.printStackTrace(pw)
+                        }
+                        file.writeText(sw.toString())
+                    }
+                    val log = file.readText()
+                    withContext(Dispatchers.Main) {
+                        crashLog = log
+                    }
+                } catch (ex: Throwable) {
+                    ex.printStackTrace()
+                }
             }
         }
     }
@@ -288,8 +381,6 @@ fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, is
     
     var isConnected by remember { mutableStateOf(false) }
     var connectedDeviceName by remember { mutableStateOf<String?>(null) }
-    var showDeviceDialog by remember { mutableStateOf(false) }
-    var pairedDevicesList by remember { mutableStateOf<List<PrinterDevice>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
@@ -324,8 +415,9 @@ fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, is
                         .background(if (isConnected) Color(0xFFD1E8CF) else MaterialTheme.colorScheme.surfaceVariant)
                         .clickable {
                             try {
-                                val hasPermission = permissionsState == null || permissionsState.allPermissionsGranted
-                                if (hasPermission) {
+                                val isGranted = checkBluetoothPermission()
+                                bluetoothPermissionGranted = isGranted
+                                if (isGranted) {
                                     if (isConnected) {
                                         printerService.disconnect()
                                         isConnected = false
@@ -335,7 +427,9 @@ fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, is
                                         showDeviceDialog = true
                                     }
                                 } else {
-                                    permissionsState.launchMultiplePermissionRequest()
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        launcher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT))
+                                    }
                                 }
                             } catch (e: Exception) {
                                 e.printStackTrace()
@@ -756,12 +850,15 @@ fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, is
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
                     try {
-                        val hasPermission = permissionsState == null || permissionsState.allPermissionsGranted
-                        if (hasPermission) {
+                        val isGranted = checkBluetoothPermission()
+                        bluetoothPermissionGranted = isGranted
+                        if (isGranted) {
                             pairedDevicesList = printerService.getPairedDevices()
                             showDeviceDialog = true 
                         } else {
-                            permissionsState.launchMultiplePermissionRequest()
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                launcher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT))
+                            }
                         }
                     } catch (e: Exception) { e.printStackTrace() }
                 }) {
