@@ -13,7 +13,7 @@ android {
   defaultConfig {
     applicationId = "com.aistudio.naeemreceipt.zxcvbn"
     minSdk = 24
-    targetSdk = 35
+    targetSdk = 33
     versionCode = 1
     versionName = "1.0"
 

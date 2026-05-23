@@ -1,100 +1,126 @@
-# Naeem Receipt Printer 🖨️
+# ND-QuickReceipt 🖨️
 
-A professional, offline-first Android application built with **Kotlin** and **Jetpack Compose** that simplifies receipt generation and printing. It is specifically designed to connect seamlessly with Bluetooth thermal printers (supporting **58mm** and **80mm** ESC/POS standards) to print custom receipts for [naeemdocumentation.com](https://naeemdocumentation.com), documentation agencies, and freelance service providers.
+A production-ready Android application built with **Kotlin** and **Jetpack Compose** for generating and printing thermal receipts via Bluetooth. Designed for [Naeem Documentation](https://naeemdocumentation.com) and adaptable to any documentation agency or freelance service provider.
 
-The application adheres to modern **Material Design 3 (M3)** guidelines, offering a responsive, dual-theme, real-time print preview, alongside a highly persistent localized Room Database.
-
----
-
-## 🎨 Visual Identity & Key Views
-
-- **Receipt Generator (Main)**: Form-based configuration supporting customizable fields like *Amount (Rs.)*, *Service Item*, *Client Name*, and *Custom Notes*, paired with a pixel-perfect, interactive real-time print preview box that supports dynamic sizing for 58mm and 80mm rollers.
-- **Branding Customizer**: Flexible Template Editor allowing you to modify and save multiple branding profiles comprising custom header texts, support phone lines, email support, websites, footer notes, and preferred paper widths.
-- **Historic Logs**: View list and detail pages of previously printed or generated receipts saved securely on-device.
-- **Direct Bluetooth Sync**: A direct status bar toggle linking to standard paired Bluetooth printers supporting low-latency printing.
+Supports **58mm** and **80mm** ESC/POS thermal printers, follows **Material Design 3** guidelines, and stores all receipt and template data fully on-device using Room.
 
 ---
 
-## 🚀 Key Features
+## Screenshots & Key Views
 
-*   **ESC/POS Bluetooth Thermal Printing**: Zero-config automatic translation of receipt details to base thermal printing protocols.
-*   **Fully-Formed Local Templates**: Save multiple business profiles (default initialized with **Naeem Documentation** details). Modify contact numbers, websites, or paper tolerances on-the-fly.
-*   **Real-time Adaptive Preview**: The virtual layout box automatically scales, wraps text, and aligns elements as you type corresponding inputs.
-*   **Offline-First Architecture**: Built around high-performance Android Room bindings, ensuring secure database records for every invoice without external server dependencies.
-*   **Advanced Permission Management**: Integrates clean runtime Bluetooth and Location checks powered by Google's Accompanist Permissions layout library.
+| Screen | Description |
+| :--- | :--- |
+| **New Print** | Form with Amount, Service, Client Name, and Notes fields. Live print preview updates as you type, scaled to selected paper width. |
+| **Customize** | Template editor for managing multiple branding profiles — store name, phone, email, website, footer text, and paper size. |
+| **History** | Running log of all printed receipts with totals analytics. Stores up to 50 recent entries shown in-app. |
 
 ---
 
-## 🛠️ Architecture & Tech Stack
+## Features
 
-This software uses Google’s recommended MVVM (Model-View-ViewModel) pattern and Clean Architecture practices:
+- **ESC/POS Bluetooth Printing** — Raw byte protocol over RFCOMM socket for reliable thermal printer communication.
+- **Multiple Branding Templates** — Create, save, and switch between business profiles. Default template is pre-seeded with Naeem Documentation details.
+- **Live Print Preview** — The preview pane reflects your input in real time and dynamically resizes for 58mm vs 80mm paper.
+- **Offline-First** — All data (receipts and templates) stored locally via Room. No network dependency whatsoever.
+- **Dark / Light Mode** — Manual theme toggle in the app bar, defaulting to system preference.
+- **Crash Diagnostics** — On app launch, if a previous crash occurred, the stack trace is surfaced in a dismissible dialog for debugging.
+- **Permission Handling** — Bluetooth permissions handled correctly across API levels: location-based discovery on API < 31, `BLUETOOTH_CONNECT` / `BLUETOOTH_SCAN` (with `neverForLocation`) on API 31+.
 
-| Layer | Technology / Library | Description |
+---
+
+## Architecture & Tech Stack
+
+Follows the **MVVM** pattern with a Repository layer over Room DAOs.
+
+| Layer | Library | Notes |
 | :--- | :--- | :--- |
-| **UI & Theming** | Jetpack Compose & Material 3 | High-fidelity declarative layout engines, dynamic Dark/Light schemas, fluid animation transitions, and responsive density structures. |
-| **Database** | Room Database (SQLite) | Embedded multi-table, relational data engine managed safely through typed DAOs. Supports automated migrations. |
-| **Permissions** | Google Accompanist | Direct declarative runtime permission wrappers handling granular Android 12+ (API 31+) permissions gracefully (e.g. `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN`). |
-| **Testing** | Robolectric & Roborazzi | Isolated JVM testing of Compose layers, state flows, and visual regression layouts. |
-| **Language** | Kotlin & Coroutines | Safe asynchronous threading model using `withContext(Dispatchers.IO)` and reactive Kotlin Flows. |
+| **UI** | Jetpack Compose + Material 3 | Declarative layout, dark/light theming, animated content size transitions |
+| **Database** | Room (SQLite) | Two entities: `receipts` and `templates`. `fallbackToDestructiveMigration` enabled — migrations are destructive for now |
+| **Async** | Kotlin Coroutines + Flow | IO dispatched off main thread; UI state collected via `collectAsState` |
+| **Permissions** | Accompanist Permissions | Declarative runtime permission wrappers |
+| **Printing** | Custom `PrinterService` | RFCOMM socket over SPP UUID; raw ESC/POS byte commands for alignment, content, and paper cut |
+| **Testing** | Robolectric + Roborazzi | JVM-based Compose tests and snapshot infrastructure |
+| **Language** | Kotlin 2.2 | KSP used for Room and Moshi codegen |
 
 ---
 
-## 📦 Directory Structure
+## Project Structure
 
-```text
+```
 /
 ├── app/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/example/
-│   │   │   │   ├── MainActivity.kt        # Application Entry Point & Navigation Layout
-│   │   │   │   ├── PrinterService.kt      # Bluetooth Service & Socket Connection (ESC/POS)
-│   │   │   │   ├── data/                  # Room Data Persistence Layer
-│   │   │   │   │   ├── AppDatabase.kt     # Database setup
-│   │   │   │   │   ├── ReceiptDao.kt      # DAO for Receipt entity operations
-│   │   │   │   │   ├── ReceiptEntity.kt   # Database Entity model for receipts
-│   │   │   │   │   ├── ReceiptRepository.kt # Central repository handling DAO queries
-│   │   │   │   │   ├── TemplateDao.kt     # DAO for Brand Template entities
-│   │   │   │   │   └── TemplateEntity.kt  # Database Entity model for business templates
-│   │   │   │   └── ui/theme/              # Material 3 typography and palette definitions
-│   │   │   └── AndroidManifest.xml        # System and Hardware permission registrations
-│   └── build.gradle.kts                   # Module level dependencies and SDK ranges
-├── gradle/
-│   └── libs.versions.toml                 # Version Catalog containing dependency groupings
-└── build.gradle.kts                       # Root level Gradle setups and settings
+│   └── src/
+│       └── main/
+│           └── java/com/example/
+│               ├── MainActivity.kt          # App entry point, Compose host, nav
+│               ├── PrinterService.kt        # Bluetooth connection + ESC/POS output
+│               └── data/
+│                   ├── AppDatabase.kt       # Room database definition (v2)
+│                   ├── ReceiptDao.kt        # Receipt CRUD
+│                   ├── ReceiptEntity.kt     # Receipt schema
+│                   ├── ReceiptRepository.kt # Repository combining both DAOs
+│                   ├── TemplateDao.kt       # Template CRUD + selection
+│                   └── TemplateEntity.kt    # Branding template schema
+└── gradle/
+    └── libs.versions.toml                   # Version catalog
 ```
 
 ---
 
-## 🔋 How to Print (Connection Protocol)
+## How to Print
 
-1. **Turn on Bluetooth**: Confirm Bluetooth is enabled on your Android device.
-2. **Pair Thermal Printer**: Navigate to Android's Bluetooth system settings and pair with your external ticket/thermal printer (customary pairing PINs are usually `0000` or `1234`).
-3. **App Selection**: Launch the Naeem Receipt Printer application.
-4. **Connect**: Tap the **Connect** button in the top right header.
-5. **Selection**: Select the mapped printer from the dynamic device dialog.
-6. **Print**: Click the visual **Print Receipt** floating button to dispatch data to the thermal roller!
+1. Enable Bluetooth on your Android device.
+2. Pair your thermal printer via Android Bluetooth settings (default PINs are usually `0000` or `1234`).
+3. Open the app and tap **Connect** in the top bar.
+4. Select your printer from the paired device list.
+5. Fill in receipt details on the **New Print** tab.
+6. Tap **Print Receipt** — data is sent over the Bluetooth socket and the receipt is saved to local history.
 
----
-
-## 🧪 Testing and Quality Control
-
-The project includes unit, integration, and UI scenario verification layouts using **Robolectric**:
-
-*   To execute the comprehensive suite of local unit tests, run:
-    ```bash
-    gradle :app:testDebugUnitTest
-    ```
-*   To record snapshot visual references for any UI layouts built, use the integrated Roborazzi runner:
-    ```bash
-    gradle :app:recordRoborazziDebug
-    ```
+> If the printer is already paired but the connection fails, try toggling Bluetooth off and on. Some thermal printers drop idle RFCOMM connections.
 
 ---
 
-## 🔒 Security & Device Permissions
+## Bluetooth Permissions
 
-To ensure maximum hardware compatibility and system security, the app defines granular permission models inside `AndroidManifest.xml` depending on the host Android Operating System:
+The app declares and handles permissions across both legacy and modern Bluetooth APIs:
 
--   **Pre-Android 12 (API < 31)**: Requires location checks (`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`) to browse and look up local Bluetooth peripherals.
--   **Android 12+ (API >= 31)**: Uses highly restricted modern keys (`BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN`) to connect without querying location details. It additionally uses `neverForLocation` flags to maximize privacy.
+| API Level | Permissions Required |
+| :--- | :--- |
+| **API < 31** (Android 11 and below) | `BLUETOOTH`, `BLUETOOTH_ADMIN`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` |
+| **API 31+** (Android 12+) | `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN` (with `neverForLocation` — location is not accessed) |
+
+---
+
+## Running Tests
+
+Unit and snapshot tests run on the JVM via Robolectric.
+
+```bash
+# Run all local unit tests
+./gradlew :app:testDebugUnitTest
+
+# Record Roborazzi screenshot baselines
+./gradlew :app:recordRoborazziDebug
+
+# Verify screenshots against recorded baselines
+./gradlew :app:verifyRoborazziDebug
+```
+
+---
+
+## Known Limitations
+
+- **No delete in History** — `deleteReceiptById` is implemented in the DAO but not exposed in the UI yet.
+- **Destructive migrations** — The database uses `fallbackToDestructiveMigration`. A schema change will wipe all stored receipts and templates.
+- **Single connection** — Only one printer can be connected at a time. Switching printers requires disconnecting first.
+- **No invoice numbering** — Receipts are stored with a timestamp but no sequential invoice number is generated.
+
+---
+
+## 📄 License
+
+This project is open-source and available for educational and commercial use under the MIT License.
+
+---
+
+**Made with ❤️ by [Abdul Hayy Khan](https://www.linkedin.com/in/abdulhayykhan/)**
