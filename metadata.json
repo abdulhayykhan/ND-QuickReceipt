@@ -1,5 +1,5 @@
 {
-  "name": "Naeem Receipt Printer",
+  "name": "ND-QuickReceipt",
   "description": "Connects to a Bluetooth thermal printer to print custom receipts for naeemdocumentation.com",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

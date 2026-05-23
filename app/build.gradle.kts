@@ -11,7 +11,7 @@ android {
   compileSdk = 35
 
   defaultConfig {
-    applicationId = "com.aistudio.naeemreceipt.zxcvbn"
+    applicationId = "com.aistudio.naeemreceipt.asdfgh"
     minSdk = 24
     targetSdk = 33
     versionCode = 1
