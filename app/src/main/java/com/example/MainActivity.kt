@@ -57,6 +57,8 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.ImportantDevices
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -69,6 +71,11 @@ import java.util.*
 import androidx.compose.runtime.collectAsState
 
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -384,6 +391,9 @@ fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, is
     var isConnected by remember { mutableStateOf(false) }
     var connectedDeviceName by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var showSettingsMenu by remember { mutableStateOf(false) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
+    var receiptToDelete by remember { mutableStateOf<ReceiptEntity?>(null) }
     val uriHandler = LocalUriHandler.current
 
     Column(
@@ -461,11 +471,48 @@ fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, is
                         .clickable { onThemeToggle() }
                         .padding(4.dp)
                 )
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    tint = MaterialTheme.colorScheme.secondary
-                )
+                Box {
+                    IconButton(
+                        onClick = { showSettingsMenu = true },
+                        modifier = Modifier
+                            .testTag("settings_button")
+                            .size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showSettingsMenu,
+                        onDismissRequest = { showSettingsMenu = false },
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        DropdownMenuItem(
+                            text = { 
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically, 
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text("Clear History", color = MaterialTheme.colorScheme.error)
+                                }
+                            },
+                            onClick = {
+                                showSettingsMenu = false
+                                showClearHistoryDialog = true
+                            },
+                            modifier = Modifier.testTag("clear_history_option")
+                        )
+                    }
+                }
             }
         }
         
@@ -704,59 +751,382 @@ fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, is
                     paperSize = selectedPaperSize
                 )
             } else if (selectedTab == 2) {
-                // History Card
+                // Day-wise Grouping and Analytics
+                val dateFormatDay = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
+                val dateFormatDisplayDay = remember { SimpleDateFormat("EEEE, MMM dd, yyyy", Locale.getDefault()) }
+                val dateFormatShortDay = remember { SimpleDateFormat("MMM dd", Locale.getDefault()) }
+                val timeFormat = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
+
+                val groupedReceipts = remember(receipts) {
+                    receipts.groupBy { dateFormatDay.format(Date(it.timestamp)) }
+                }
+                val sortedDays = remember(groupedReceipts) {
+                    groupedReceipts.keys.sortedDescending()
+                }
+
                 val totalSales = receipts.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+                val totalCount = receipts.size
+                val overallAverage = if (totalCount > 0) totalSales / totalCount else 0.0
+
+                // Expand/collapse states for Day-wise analytics
+                var expandedAnalyticDays by remember { mutableStateOf(setOf<String>()) }
+                // Expand/collapse states for Day-wise history list
+                var expandedHistoryDays by remember { mutableStateOf(if (sortedDays.isNotEmpty()) setOf(sortedDays.first()) else emptySet<String>()) }
+
+                // Determine maximum sales in a single day for the comparative bar chart
+                val maxDaySales = remember(groupedReceipts) {
+                    groupedReceipts.values.maxOfOrNull { dayList ->
+                        dayList.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+                    } ?: 1.0
+                }
+
+                // 1. Analytics Card
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     shape = RoundedCornerShape(24.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(24.dp), spotColor = Color.LightGray)
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(2.dp, RoundedCornerShape(24.dp), spotColor = Color.LightGray)
+                        .animateContentSize()
                 ) {
                     Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                         Text(
-                            text = "ANALYTICS",
-                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Total Receipts:", style = MaterialTheme.typography.bodyMedium)
-                            Text("${receipts.size}", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.TrendingUp,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "BUSINESS ANALYTICS",
+                                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.1.sp, fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Total Sales:", style = MaterialTheme.typography.bodyMedium)
-                            Text("Rs. ${String.format(Locale.US, "%.2f", totalSales)}", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+
+                        // High-level cards row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("Total Revenue", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("Rs. ${String.format(Locale.US, "%.2f", totalSales)}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("Total Receipts", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("$totalCount printed", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Average Ticket:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+                            Text("Rs. ${String.format(Locale.US, "%.2f", overallAverage)}", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        // Day-wise detailed breakdown list in analytics
+                        Text(
+                            text = "DAY-WISE METRICS BREAKDOWN",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+
+                        if (sortedDays.isEmpty()) {
+                            Text(
+                                "No daily data available.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                sortedDays.forEach { dayKey ->
+                                    val dayList = groupedReceipts[dayKey] ?: emptyList()
+                                    val dayTotal = dayList.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+                                    val dayCount = dayList.size
+                                    val dayAvg = if (dayCount > 0) dayTotal / dayCount else 0.0
+                                    val dateParsed = try { dateFormatDay.parse(dayKey) ?: Date() } catch(e: Exception) { Date() }
+                                    val displayDay = dateFormatShortDay.format(dateParsed)
+                                    
+                                    val isDayExpanded = expandedAnalyticDays.contains(dayKey)
+                                    
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                expandedAnalyticDays = if (isDayExpanded) {
+                                                    expandedAnalyticDays - dayKey
+                                                } else {
+                                                    expandedAnalyticDays + dayKey
+                                                }
+                                            }
+                                            .padding(12.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = if (dayKey == dateFormatDay.format(Date())) "Today ($displayDay)" else displayDay,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = "$dayCount receipts",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.secondary
+                                                )
+                                            }
+                                            
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Rs. ${String.format(Locale.US, "%.2f", dayTotal)}",
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                )
+                                                Icon(
+                                                    imageVector = if (isDayExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                    contentDescription = "Toggle details",
+                                                    tint = MaterialTheme.colorScheme.secondary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+
+                                        // Comparative Performance Bar
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        val performanceFraction = (dayTotal / maxDaySales).toFloat().coerceIn(0f, 1f)
+                                        LinearProgressIndicator(
+                                            progress = { performanceFraction },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(6.dp)
+                                                .clip(RoundedCornerShape(3.dp)),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                        )
+
+                                        if (isDayExpanded) {
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            
+                                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                    Text("Day Average Ticket:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                                                    Text("Rs. ${String.format(Locale.US, "%.2f", dayAvg)}", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold))
+                                                }
+                                                
+                                                val topService = dayList.groupBy { it.serviceDetails }
+                                                    .maxByOrNull { it.value.size }?.key ?: "N/A"
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                    Text("Primary Service:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                                                    Text(topService, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
+                                                }
+
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = "Service Contributions:",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                
+                                                val contributions = dayList.groupBy { it.serviceDetails }
+                                                contributions.forEach { (service, items) ->
+                                                    val serviceTotal = items.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Text("• $service (${items.size})", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                                                        Text("Rs. ${String.format(Locale.US, "%.2f", serviceTotal)}", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-                
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 2. Day-Wise History Header
                 Text(
-                    text = "RECENT RECEIPTS",
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold),
+                    text = "DAY-WISE PRINT HISTORY",
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.1.sp, fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 16.dp, start = 4.dp)
+                    modifier = Modifier.padding(top = 8.dp, start = 4.dp, bottom = 8.dp)
                 )
-                
-                val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()) }
-                
+
                 if (receipts.isEmpty()) {
-                    Text("No receipts printed yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(start = 4.dp))
+                    Text(
+                        "No receipts printed yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+                    )
                 } else {
-                    receipts.take(50).forEach { receipt ->
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(receipt.serviceDetails, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
-                                    Text("Rs. ${receipt.amount}", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary))
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        sortedDays.forEach { dayKey ->
+                            val dayList = groupedReceipts[dayKey] ?: emptyList()
+                            val dayTotal = dayList.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+                            val dateParsed = try { dateFormatDay.parse(dayKey) ?: Date() } catch(e: Exception) { Date() }
+                            val isHistoryExpanded = expandedHistoryDays.contains(dayKey)
+
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                shape = RoundedCornerShape(20.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .animateContentSize()
+                            ) {
+                                Column {
+                                    // Expandable Day Header
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                expandedHistoryDays = if (isHistoryExpanded) {
+                                                    expandedHistoryDays - dayKey
+                                                } else {
+                                                    expandedHistoryDays + dayKey
+                                                }
+                                            }
+                                            .padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.DateRange,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = if (dayKey == dateFormatDay.format(Date())) "Today" else dateFormatDisplayDay.format(dateParsed),
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                                )
+                                                Text(
+                                                    text = "${dayList.size} Receipts | Rs. ${String.format(Locale.US, "%.2f", dayTotal)}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.secondary
+                                                )
+                                            }
+                                        }
+                                        Icon(
+                                            imageVector = if (isHistoryExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                            contentDescription = "Toggle History Day",
+                                            tint = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+
+                                    if (isHistoryExpanded) {
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                        
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            dayList.forEach { receipt ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                                                        .padding(14.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = receipt.serviceDetails,
+                                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                            maxLines = 1
+                                                        )
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        if (receipt.customerName.isNotBlank()) {
+                                                            Text(
+                                                                text = "👤 ${receipt.customerName}",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                            Spacer(modifier = Modifier.height(2.dp))
+                                                        }
+                                                        Text(
+                                                            text = "🕒 ${timeFormat.format(Date(receipt.timestamp))}",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.secondary
+                                                        )
+                                                    }
+                                                    
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "Rs. ${receipt.amount}",
+                                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                        )
+                                                        IconButton(
+                                                            onClick = {
+                                                                receiptToDelete = receipt
+                                                            },
+                                                            modifier = Modifier.size(36.dp).testTag("delete_receipt_${receipt.id}")
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Delete,
+                                                                contentDescription = "Delete receipt",
+                                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                if (receipt.customerName.isNotBlank()) {
-                                    Text("Customer: ${receipt.customerName}", style = MaterialTheme.typography.bodyMedium)
-                                }
-                                Text("Date: ${dateFormat.format(Date(receipt.timestamp))}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
                             }
                         }
                     }
@@ -914,6 +1284,67 @@ fun ReceiptApp(printerService: PrinterService, repository: ReceiptRepository, is
                             Toast.makeText(context, "Connection Failed", Toast.LENGTH_SHORT).show()
                         }
                     }
+                }
+            }
+        )
+    }
+
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            title = { Text("Clear History 🗑️") },
+            text = { Text("Are you sure you want to clear all printed receipt history? This action cannot be undone.", style = MaterialTheme.typography.bodyMedium) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearHistoryDialog = false
+                        coroutineScope.launch {
+                            repository.deleteAll()
+                            Toast.makeText(context, "History cleared successfully", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Clear")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearHistoryDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (receiptToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { receiptToDelete = null },
+            title = { Text("Delete Receipt 🗑️") },
+            text = { 
+                Text(
+                    "Are you sure you want to delete the receipt for \"${receiptToDelete?.serviceDetails}\" of Rs. ${receiptToDelete?.amount} from history?", 
+                    style = MaterialTheme.typography.bodyMedium
+                ) 
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        receiptToDelete?.let { receipt ->
+                            coroutineScope.launch {
+                                repository.deleteById(receipt.id)
+                                Toast.makeText(context, "Receipt deleted successfully", Toast.LENGTH_SHORT).show()
+                                receiptToDelete = null
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { receiptToDelete = null }) {
+                    Text("Cancel")
                 }
             }
         )

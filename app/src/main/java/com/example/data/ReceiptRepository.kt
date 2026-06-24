@@ -19,6 +19,8 @@ class ReceiptRepository(private val receiptDao: ReceiptDao, private val template
 
     suspend fun deleteById(id: Int) = receiptDao.deleteReceiptById(id)
     
+    suspend fun deleteAll() = receiptDao.deleteAllReceipts()
+    
     suspend fun getTemplateCount(): Int = templateDao.getTemplateCount()
     
     suspend fun insertTemplate(template: TemplateEntity) = templateDao.insertTemplate(template)
