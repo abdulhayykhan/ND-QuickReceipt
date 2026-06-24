@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -21,6 +23,22 @@ android {
   }
 
   signingConfigs {
+    // Automatically decode debug.keystore if it is missing
+    val debugKeystoreFile = file("${rootDir}/debug.keystore")
+    if (!debugKeystoreFile.exists()) {
+      val base64File = file("${rootDir}/debug.keystore.base64")
+      if (base64File.exists()) {
+        try {
+          val base64Content = base64File.readText().trim()
+          val decodedBytes = Base64.getDecoder().decode(base64Content)
+          debugKeystoreFile.writeBytes(decodedBytes)
+          logger.lifecycle("Successfully generated debug.keystore from debug.keystore.base64")
+        } catch (e: Exception) {
+          logger.error("Failed to automatically decode debug.keystore.base64: ${e.message}")
+        }
+      }
+    }
+
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
       storeFile = file(keystorePath)
