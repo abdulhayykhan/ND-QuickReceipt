@@ -26,15 +26,23 @@ android {
     // Automatically decode debug.keystore if it is missing
     val debugKeystoreFile = file("${rootDir}/debug.keystore")
     if (!debugKeystoreFile.exists()) {
+      var base64Content: String? = null
       val base64File = file("${rootDir}/debug.keystore.base64")
       if (base64File.exists()) {
+        base64Content = base64File.readText().trim()
+      } else {
+        // Hardcoded fallback of the original debug.keystore base64 string
+        base64Content = "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"
+      }
+
+      if (base64Content != null) {
         try {
-          val base64Content = base64File.readText().trim()
           val decodedBytes = Base64.getDecoder().decode(base64Content)
+          debugKeystoreFile.parentFile.mkdirs()
           debugKeystoreFile.writeBytes(decodedBytes)
-          logger.lifecycle("Successfully generated debug.keystore from debug.keystore.base64")
+          logger.lifecycle("Successfully generated debug.keystore")
         } catch (e: Exception) {
-          logger.error("Failed to automatically decode debug.keystore.base64: ${e.message}")
+          logger.error("Failed to decode and write debug.keystore: ${e.message}")
         }
       }
     }
